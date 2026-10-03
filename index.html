@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Report Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  body{background:#0B0F17;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .card{background:#111827;border:1px solid #1f2937;border-radius:1rem}
+  .drop-active{border-color:#38bdf8!important;background:rgba(56,189,248,.08)}
+  ::-webkit-scrollbar{height:8px;width:8px}::-webkit-scrollbar-thumb{background:#273244;border-radius:8px}
+</style>
+</head>
+<body class="text-slate-200 min-h-screen">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+  <!-- Header -->
+  <header class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="p-3 rounded-xl bg-sky-500/10 border border-sky-500/30">
+        <i data-lucide="shield-check" class="w-7 h-7 text-sky-400"></i>
+      </div>
+      <div>
+        <h1 class="text-xl sm:text-2xl font-semibold text-white">Network Security Dashboard</h1>
+        <p id="meta" class="text-xs text-slate-500 mt-0.5">—</p>
+      </div>
+    </div>
+    <label id="drop" for="file"
+      class="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-slate-700 cursor-pointer hover:border-sky-500/60 transition lg:w-96">
+      <i data-lucide="upload-cloud" class="w-6 h-6 text-sky-400 shrink-0"></i>
+      <div class="text-sm leading-tight">
+        <span class="font-medium text-slate-200">Arrastra tu <code class="text-sky-300">network_report.json</code></span>
+        <span class="block text-slate-500 text-xs">o haz clic para seleccionarlo</span>
+      </div>
+      <input id="file" type="file" accept=".json,application/json" class="hidden">
+    </label>
+  </header>
+
+  <div id="error" class="hidden card border-red-500/40 text-red-300 text-sm px-4 py-3 flex items-center gap-2">
+    <i data-lucide="alert-triangle" class="w-4 h-4"></i><span></span>
+  </div>
+
+  <!-- Metrics -->
+  <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+    <div class="card p-5 flex items-center gap-4">
+      <div class="p-3 rounded-xl bg-sky-500/10"><i data-lucide="monitor-smartphone" class="w-6 h-6 text-sky-400"></i></div>
+      <div><p class="text-xs uppercase tracking-wider text-slate-500">Dispositivos activos</p>
+        <p id="m-total" class="text-3xl font-bold text-white">0</p></div>
+    </div>
+    <div class="card p-5 flex items-center gap-4">
+      <div class="p-3 rounded-xl bg-emerald-500/10"><i data-lucide="activity" class="w-6 h-6 text-emerald-400"></i></div>
+      <div><p class="text-xs uppercase tracking-wider text-slate-500">Latencia promedio</p>
+        <p class="text-3xl font-bold text-white"><span id="m-lat">0</span><span class="text-base font-medium text-slate-500 ml-1">ms</span></p></div>
+    </div>
+    <div class="card p-5 flex items-center gap-4">
+      <div class="p-3 rounded-xl bg-violet-500/10"><i data-lucide="router" class="w-6 h-6 text-violet-400"></i></div>
+      <div class="min-w-0"><p class="text-xs uppercase tracking-wider text-slate-500">Gateway / IP local</p>
+        <p id="m-gw" class="text-lg font-semibold text-white font-mono truncate">—</p>
+        <p id="m-local" class="text-sm text-slate-400 font-mono truncate">—</p></div>
+    </div>
+    <div id="risk-card" class="card p-5 flex items-center gap-4 transition">
+      <div id="risk-icon" class="p-3 rounded-xl bg-slate-500/10"><i data-lucide="shield-alert" class="w-6 h-6 text-slate-400"></i></div>
+      <div><p class="text-xs uppercase tracking-wider text-slate-500">Riesgo alto / medio</p>
+        <p class="text-3xl font-bold"><span id="m-high" class="text-red-400">0</span>
+        <span class="text-slate-600 text-xl mx-1">/</span><span id="m-med" class="text-amber-400">0</span></p></div>
+    </div>
+  </section>
+
+  <!-- Charts -->
+  <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="card p-5 lg:col-span-2">
+      <h2 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i data-lucide="bar-chart-3" class="w-4 h-4 text-sky-400"></i>Latencia y Jitter por IP</h2>
+      <div class="h-72"><canvas id="chartLat"></canvas></div>
+    </div>
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-white mb-3 flex items-center gap-2"><i data-lucide="pie-chart" class="w-4 h-4 text-sky-400"></i>Distribución de riesgo</h2>
+      <div class="h-72"><canvas id="chartRisk"></canvas></div>
+    </div>
+  </section>
+
+  <!-- Table -->
+  <section class="card overflow-hidden">
+    <div class="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800">
+      <h2 class="text-sm font-semibold text-white flex items-center gap-2"><i data-lucide="list" class="w-4 h-4 text-sky-400"></i>Dispositivos <span id="count" class="text-slate-500 font-normal"></span></h2>
+      <div class="flex flex-col sm:flex-row gap-2">
+        <div class="relative">
+          <i data-lucide="search" class="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2"></i>
+          <input id="q" type="text" placeholder="Buscar IP, host, fabricante, SO…"
+            class="w-full sm:w-72 bg-[#0B0F17] border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm placeholder-slate-600 focus:outline-none focus:border-sky-500">
+        </div>
+        <select id="risk" class="bg-[#0B0F17] border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-sky-500">
+          <option value="all">Todos</option>
+          <option value="alto">Solo riesgo alto</option>
+          <option value="medio">Solo riesgo medio</option>
+          <option value="bajo">Solo riesgo bajo</option>
+        </select>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left whitespace-nowrap">
+        <thead class="text-xs uppercase tracking-wider text-slate-500 bg-[#0d131f]">
+          <tr>
+            <th class="px-4 py-3">Estado</th><th class="px-4 py-3">IP / Hostname</th>
+            <th class="px-4 py-3">Tipo</th>
+            <th class="px-4 py-3">SO estimado</th><th class="px-4 py-3">Fabricante</th>
+            <th class="px-4 py-3">Latencia / Jitter</th><th class="px-4 py-3">Pérdida</th>
+            <th class="px-4 py-3">Riesgo</th><th class="px-4 py-3">Puertos abiertos</th>
+            <th class="px-4 py-3 text-center">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tbody" class="divide-y divide-slate-800/70"></tbody>
+      </table>
+    </div>
+    <p id="empty" class="hidden text-center text-slate-500 text-sm py-10">Sin resultados para los filtros actuales.</p>
+  </section>
+
+  <footer class="text-center text-xs text-slate-600 pb-4">Mostrando datos de ejemplo hasta que cargues tu reporte.</footer>
+</div>
+
+<!-- Toast -->
+<div id="toast" role="status" aria-live="polite"
+  class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[92vw] sm:max-w-md pointer-events-none opacity-0 translate-y-4 transition-all duration-300">
+  <div class="flex items-start gap-3 bg-[#111827] border border-sky-500/40 shadow-2xl shadow-black/50 rounded-xl px-4 py-3">
+    <i id="toast-icon" data-lucide="clipboard-check" class="w-5 h-5 text-sky-400 shrink-0 mt-0.5"></i>
+    <p id="toast-msg" class="text-sm text-slate-200"></p>
+  </div>
+</div>
+
+<script>
+const CRITICAL = [21, 23, 3306];
+const SAMPLE = {
+  timestamp_iso:"2026-10-02T19:00:00Z", local_ip:"192.168.1.15", gateway_ip:"192.168.1.1", subnet:"192.168.1.0/24",
+  metrics:{total_devices:6, avg_latency_ms:14.2, gateway_ip:"192.168.1.1"},
+  devices:[
+    {ip:"192.168.1.1",hostname:"router.local",mac:"aa:bb:cc:dd:ee:ff",vendor:"TP-Link Corporation",latency_ms:1.5,jitter_ms:0.2,packet_loss_pct:0,os_hint:"Dispositivo de Red / Router",risk_level:"Bajo",open_ports:[80,443]},
+    {ip:"192.168.1.15",hostname:"mi-equipo",mac:"de:ad:be:ef:00:15",vendor:"Intel Corporate",latency_ms:0.4,jitter_ms:0.1,packet_loss_pct:0,os_hint:"Windows",risk_level:"Bajo",open_ports:[]},
+    {ip:"192.168.1.23",hostname:"smart-tv",mac:"3c:5a:b4:11:22:33",vendor:"Samsung Electronics",latency_ms:22.8,jitter_ms:6.4,packet_loss_pct:2,os_hint:"Smart TV / IoT",risk_level:"Medio",open_ports:[8001,8080]},
+    {ip:"192.168.1.31",hostname:"camara-ip",mac:"44:19:b6:aa:bb:cc",vendor:"Hikvision",latency_ms:31.7,jitter_ms:9.8,packet_loss_pct:5,os_hint:"Cámara IP / Embebido",risk_level:"Alto",open_ports:[23,80,554]},
+    {ip:"192.168.1.45",hostname:"servidor-local",mac:"11:22:33:44:55:66",vendor:"Raspberry Pi Foundation",latency_ms:12.4,jitter_ms:2.1,packet_loss_pct:0,os_hint:"Linux / Unix / Móvil",risk_level:"Alto",open_ports:[21,22,80,3306]},
+    {ip:"192.168.1.60",hostname:"iphone-ana",mac:"f0:18:98:77:88:99",vendor:"Apple, Inc.",latency_ms:17.2,jitter_ms:4.5,packet_loss_pct:1,os_hint:"iOS / Móvil",risk_level:"Bajo",open_ports:[]}
+  ]
+};
+
+let data = null, chartLat = null, chartRisk = null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "—").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm = r => String(r || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const num = (v, d = 1) => (typeof v === "number" && isFinite(v)) ? v.toFixed(d) : "—";
+
+const RISK = {
+  alto:  {cls:"bg-red-500/15 text-red-400 border-red-500/40", dot:"bg-red-400", color:"#ef4444", label:"Alto"},
+  medio: {cls:"bg-amber-500/15 text-amber-400 border-amber-500/40", dot:"bg-amber-400", color:"#f59e0b", label:"Medio"},
+  bajo:  {cls:"bg-emerald-500/15 text-emerald-400 border-emerald-500/40", dot:"bg-emerald-400", color:"#10b981", label:"Bajo"}
+};
+const riskOf = d => RISK[norm(d.risk_level)] || {cls:"bg-slate-500/15 text-slate-400 border-slate-500/40", dot:"bg-slate-400", color:"#64748b", label:esc(d.risk_level)};
+
+const TYPES = {
+  router: {label:"Router", icon:"router",  cls:"bg-violet-500/15 text-violet-300 border-violet-500/40"},
+  movil:  {label:"Móvil",  icon:"smartphone", cls:"bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/40"},
+  pc:     {label:"PC",     icon:"monitor", cls:"bg-sky-500/15 text-sky-300 border-sky-500/40"},
+  otro:   {label:"Otro",   icon:"cpu",     cls:"bg-slate-500/15 text-slate-400 border-slate-500/40"}
+};
+// Prioriza device_type; si no existe o no es concluyente, usa os_hint.
+function classify(text) {
+  const t = norm(text);
+  if (!t) return null;
+  if (/router|gateway|modem|access ?point|dispositivo de red/.test(t)) return "router";
+  if (/android|ios|iphone|ipad|tablet|smartphone|phone/.test(t)) return "movil";
+  if (/windows|macos|mac os|linux|unix|ubuntu|debian|desktop|laptop|notebook|\bpc\b|workstation/.test(t)) return "pc";
+  if (/movil|mobile/.test(t)) return "movil";
+  return null;
+}
+const typeOf = d => TYPES[classify(d.device_type) || classify(d.os_hint) || "otro"];
+
+let toastTimer;
+function toast(msg, ok = true) {
+  $("toast-msg").textContent = msg;
+  const ic = $("toast-icon");
+  ic.setAttribute("data-lucide", ok ? "clipboard-check" : "alert-circle");
+  ic.setAttribute("class", "w-5 h-5 shrink-0 mt-0.5 " + (ok ? "text-sky-400" : "text-red-400"));
+  lucide.createIcons();
+  const t = $("toast");
+  t.classList.remove("opacity-0", "translate-y-4");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add("opacity-0", "translate-y-4"), 4500);
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (_) {
+    // Alternativa para archivos abiertos con file:// o navegadores sin Clipboard API
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (__) {}
+    ta.remove();
+    return ok;
+  }
+}
+
+async function blockDevice(mac) {
+  if (!mac) return toast("Este dispositivo no tiene dirección MAC en el reporte.", false);
+  const ok = await copyText(mac);
+  ok ? toast("Dirección MAC copiada. Págala en el filtro MAC de tu router para bloquear el acceso.")
+     : toast("No se pudo copiar la MAC. Cópiala manualmente: " + mac, false);
+}
+
+function status(d) {
+  const l = d.packet_loss_pct || 0;
+  if (l >= 100) return {t:"Sin respuesta", c:"bg-red-400"};
+  if (l > 0)    return {t:"Inestable",     c:"bg-amber-400"};
+  return {t:"En línea", c:"bg-emerald-400"};
+}
+
+function load(json) {
+  if (!json || !Array.isArray(json.devices)) throw new Error("El JSON no contiene el arreglo 'devices'.");
+  data = json; render();
+}
+
+function renderMetrics() {
+  const dev = data.devices, m = data.metrics || {};
+  const avg = m.avg_latency_ms ?? (dev.reduce((a, d) => a + (d.latency_ms || 0), 0) / (dev.length || 1));
+  const high = dev.filter(d => norm(d.risk_level) === "alto").length;
+  const med  = dev.filter(d => norm(d.risk_level) === "medio").length;
+  $("m-total").textContent = m.total_devices ?? dev.length;
+  $("m-lat").textContent = num(avg);
+  $("m-gw").textContent = m.gateway_ip || data.gateway_ip || "—";
+  $("m-local").textContent = "Local: " + (data.local_ip || "—");
+  $("m-high").textContent = high; $("m-med").textContent = med;
+  const bad = high > 0 ? "red" : med > 0 ? "amber" : null;
+  $("risk-card").className = "card p-5 flex items-center gap-4 transition " +
+    (bad === "red" ? "!border-red-500/50 shadow-[0_0_24px_-8px_rgba(239,68,68,.5)]" : bad === "amber" ? "!border-amber-500/50 shadow-[0_0_24px_-8px_rgba(245,158,11,.4)]" : "");
+  $("risk-icon").className = "p-3 rounded-xl " + (bad === "red" ? "bg-red-500/15" : bad === "amber" ? "bg-amber-500/15" : "bg-emerald-500/10");
+  $("risk-icon").firstElementChild.setAttribute("class", "w-6 h-6 " + (bad === "red" ? "text-red-400" : bad === "amber" ? "text-amber-400" : "text-emerald-400"));
+  const ts = data.timestamp_iso ? new Date(data.timestamp_iso).toLocaleString() : "";
+  $("meta").textContent = [data.subnet && "Subred " + data.subnet, ts].filter(Boolean).join(" · ") || "—";
+}
+
+function renderCharts() {
+  Chart.defaults.color = "#94a3b8"; Chart.defaults.borderColor = "#1f2937";
+  const dev = data.devices;
+  chartLat?.destroy(); chartRisk?.destroy();
+  chartLat = new Chart($("chartLat"), {
+    type: "bar",
+    data: {
+      labels: dev.map(d => d.ip),
+      datasets: [
+        {label: "Latencia (ms)", data: dev.map(d => d.latency_ms), backgroundColor: "#38bdf8", borderRadius: 4},
+        {label: "Jitter (ms)",   data: dev.map(d => d.jitter_ms),  backgroundColor: "#a78bfa", borderRadius: 4}
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: {mode: "index", intersect: false},
+      plugins: {legend: {position: "top", align: "end", labels: {usePointStyle: true, boxWidth: 8}}},
+      scales: {y: {beginAtZero: true, title: {display: true, text: "ms"}}, x: {grid: {display: false}}}
+    }
+  });
+  const counts = ["alto", "medio", "bajo"].map(k => dev.filter(d => norm(d.risk_level) === k).length);
+  chartRisk = new Chart($("chartRisk"), {
+    type: "doughnut",
+    data: {labels: ["Alto", "Medio", "Bajo"], datasets: [{data: counts, backgroundColor: ["#ef4444", "#f59e0b", "#10b981"], borderColor: "#111827", borderWidth: 3}]},
+    options: {responsive: true, maintainAspectRatio: false, cutout: "65%", plugins: {legend: {position: "bottom", labels: {usePointStyle: true, boxWidth: 8}}}}
+  });
+}
+
+function renderTable() {
+  const q = $("q").value.trim().toLowerCase(), rf = $("risk").value;
+  const rows = data.devices.filter(d => {
+    if (rf !== "all" && norm(d.risk_level) !== rf) return false;
+    return !q || [d.ip, d.hostname, d.vendor, d.os_hint, d.mac, typeOf(d).label].some(v => String(v ?? "").toLowerCase().includes(q));
+  });
+  $("count").textContent = `(${rows.length} de ${data.devices.length})`;
+  $("empty").classList.toggle("hidden", rows.length > 0);
+  $("tbody").innerHTML = rows.map(d => {
+    const st = status(d), r = riskOf(d);
+    const ports = (d.open_ports || []).map(p => CRITICAL.includes(p)
+      ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono font-semibold bg-red-500/15 text-red-400 border border-red-500/50 ring-1 ring-red-500/20" title="Puerto crítico"><i data-lucide="alert-triangle" class="w-3 h-3"></i>${esc(p)}</span>`
+      : `<span class="px-2 py-0.5 rounded-md text-xs font-mono bg-slate-700/40 text-slate-300 border border-slate-600/50">${esc(p)}</span>`
+    ).join("") || `<span class="text-slate-600 text-xs">Ninguno</span>`;
+    const loss = d.packet_loss_pct || 0, tp = typeOf(d);
+    return `<tr class="hover:bg-slate-800/40 transition">
+      <td class="px-4 py-3"><span class="inline-flex items-center gap-2 text-xs"><span class="w-2 h-2 rounded-full ${st.c}"></span>${st.t}</span></td>
+      <td class="px-4 py-3"><div class="font-mono text-white">${esc(d.ip)}</div><div class="text-xs text-slate-500">${esc(d.hostname)}</div></td>
+      <td class="px-4 py-3"><span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${tp.cls}"><i data-lucide="${tp.icon}" class="w-3.5 h-3.5"></i>${tp.label}</span></td>
+      <td class="px-4 py-3 text-slate-300">${esc(d.os_hint)}</td>
+      <td class="px-4 py-3 text-slate-300">${esc(d.vendor)}<div class="text-xs text-slate-600 font-mono">${esc(d.mac)}</div></td>
+      <td class="px-4 py-3 font-mono"><span class="text-sky-300">${num(d.latency_ms)} ms</span> <span class="text-slate-600">/</span> <span class="text-violet-300">${num(d.jitter_ms)} ms</span></td>
+      <td class="px-4 py-3 font-mono ${loss > 0 ? "text-amber-400" : "text-slate-400"}">${esc(loss)}%</td>
+      <td class="px-4 py-3"><span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${r.cls}"><span class="w-1.5 h-1.5 rounded-full ${r.dot}"></span>${r.label}</span></td>
+      <td class="px-4 py-3"><div class="flex flex-wrap gap-1.5 max-w-xs whitespace-normal">${ports}</div></td>
+      <td class="px-4 py-3 text-center">
+        <button type="button" data-mac="${esc(d.mac === undefined || d.mac === null ? "" : d.mac)}"
+          title="Copiar MAC para bloquear en el router" aria-label="Copiar MAC de ${esc(d.ip)} para bloquear acceso"
+          class="block-btn inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 transition">
+          <i data-lucide="lock" class="w-4 h-4 pointer-events-none"></i>
+        </button>
+      </td>
+    </tr>`;
+  }).join("");
+  lucide.createIcons();
+}
+
+function render() { renderMetrics(); renderCharts(); renderTable(); lucide.createIcons(); }
+
+function showError(msg) {
+  const e = $("error"); e.classList.toggle("hidden", !msg);
+  if (msg) e.querySelector("span").textContent = msg;
+}
+
+function readFile(file) {
+  if (!file) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    try { load(JSON.parse(fr.result)); showError(""); document.querySelector("footer").textContent = "Reporte cargado: " + file.name; }
+    catch (err) { showError("No se pudo leer el archivo: " + err.message); }
+  };
+  fr.readAsText(file);
+}
+
+$("tbody").addEventListener("click", e => {
+  const btn = e.target.closest(".block-btn");
+  if (btn) blockDevice(btn.dataset.mac);
+});
+$("file").addEventListener("change", e => readFile(e.target.files[0]));
+$("q").addEventListener("input", renderTable);
+$("risk").addEventListener("change", renderTable);
+const drop = $("drop");
+["dragenter", "dragover"].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("drop-active"); }));
+["dragleave", "drop"].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("drop-active"); }));
+document.addEventListener("drop", e => readFile(e.dataTransfer.files[0]));
+
+load(SAMPLE);
+</script>
+</body>
+</html>
